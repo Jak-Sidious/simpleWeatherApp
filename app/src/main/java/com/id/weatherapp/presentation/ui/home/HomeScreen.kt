@@ -1,51 +1,76 @@
 package com.id.weatherapp.presentation.ui.home
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.id.weatherapp.presentation.navigation.NavigationEvent
+import com.id.weatherapp.presentation.ui.common.EmptyState
+import com.id.weatherapp.presentation.ui.common.SearchBar
 import com.id.weatherapp.presentation.ui.viewmodel.HomeUiState
 import com.id.weatherapp.presentation.ui.viewmodel.HomeViewModel
 import com.id.weatherapp.presentation.ui.weather.WeatherDisplay
 
 @Composable
-fun HomeScreen(viewModel: HomeViewModel, modifier: Modifier = Modifier) {
+fun HomeScreen(
+    viewModel: HomeViewModel,
+    onCitySelected: (String) -> Unit
+) {
+
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    var isSearchActive by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        viewModel.navigationEvent.collect { event ->
+            when (event) {
+                is NavigationEvent.NavigateToDetail -> onCitySelected(event.city)
+                else -> {}
+            }
+        }
+    }
 
     Column(
-        modifier = modifier.padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        modifier = Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        OutlinedTextField(
-            value = viewModel.searchQuery.collectAsStateWithLifecycle().value,
-            onValueChange = { viewModel.onSearchQueryChanged(it) },
-            label = { Text("Search location") },
-            modifier = Modifier.fillMaxWidth()
+        SearchBar(
+            query = viewModel.searchQuery.collectAsStateWithLifecycle().value,
+            onQueryChange = {
+                viewModel.onSearchQueryChanged(it)
+                isSearchActive = it.isNotEmpty()
+            },
+            onSearch = {
+                viewModel.fetchWeatherForCity(it)
+                isSearchActive = false
+            },
+            modifier = Modifier.padding(16.dp)
         )
 
-        Button(
-            onClick = { viewModel.fetchWeatherForCity(viewModel.searchQuery.value) },
-            modifier = Modifier.align(Alignment.End)
-        ) {
-            Text("Search")
-        }
-
-        when (uiState) {
-            is HomeUiState.Loading -> CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
-            is HomeUiState.Success -> WeatherDisplay((uiState as HomeUiState.Success).weatherData)
-            is HomeUiState.Error -> Text("")
-            is HomeUiState.Empty -> Text("Search for a city to see weather details.")
+        when {
+            isSearchActive && uiState is HomeUiState.Success -> {
+                WeatherDisplay(
+                    weatherData = (uiState as HomeUiState.Success).weatherData,
+                    isSearchResult = true,
+                    onClick = {
+                        onCitySelected((uiState as HomeUiState.Success).weatherData.cityName)
+                        isSearchActive = false
+                    }
+                )
+            }
+            uiState is HomeUiState.Loading -> CircularProgressIndicator()
+            uiState is HomeUiState.Success -> WeatherDisplay((uiState as HomeUiState.Success).weatherData)
+            uiState is HomeUiState.Error -> {} // Empty composable for error state
+            uiState is HomeUiState.Empty -> EmptyState("No City Selected", "Please Search For A City")
         }
     }
 }
